@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TEAM ASTRA — Device Verification (Final)</title>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg1:#050014; --bg2:#0b1b2b; --accent1:#00ffd5; --accent2:#ff0080; --gold:#ffb86b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:"Inter",system-ui,Arial; color:#e6f7ff; -webkit-font-smoothing:antialiased}
+  body{
+    background: radial-gradient(circle at 10% 10%, rgba(0,30,60,0.25), transparent 18%),
+                linear-gradient(180deg,var(--bg1),var(--bg2));
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;padding:24px;
+    overflow:hidden;
+  }
+
+  /* Full-screen animated shader backdrop container */
+  #shader-wrap{ position:fixed; inset:0; z-index:0; pointer-events:none; }
+
+  /* Card wrapper */
+  .card {
+    z-index:20;
+    width:min(980px, 96vw);
+    max-width:980px;
+    display:grid;
+    grid-template-columns: 1fr 360px;
+    gap:20px;
+    align-items:start;
+    padding:22px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.04);
+    box-shadow: 0 10px 40px rgba(2,6,23,0.6);
+    backdrop-filter: blur(8px);
+  }
+
+  /* Left: 3D viewport + labels */
+  .left {
+    display:flex;flex-direction:column;gap:12px;align-items:center;padding:6px;
+  }
+  #viewport {
+    width:100%;
+    height:420px;
+    border-radius:12px;
+    overflow:hidden;
+    background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.18));
+    display:flex;align-items:center;justify-content:center;
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.35);
+  }
+
+  /* small progress bar */
+  .progress {
+    width:86%;
+    height:8px;
+    border-radius:999px;
+    background:rgba(255,255,255,0.06);
+    overflow:hidden;
+  }
+  .progress > i {
+    display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--accent1),var(--accent2));
+    transition:width 300ms linear;
+  }
+
+  /* Right: Info & controls */
+  .right {
+    display:flex;flex-direction:column;gap:12px;padding-left:6px;
+  }
+  .title { font-family:"Orbitron",sans-serif; letter-spacing:1px; font-size:18px; color:linear-gradient; text-transform:uppercase; display:flex; gap:8px; align-items:center; }
+  .small { font-size:13px; color:rgba(230,247,255,0.8) }
+
+  .info-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .info {
+    padding:12px 10px;
+    border-radius:12px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border:1px solid rgba(255,255,255,0.03);
+    min-height:72px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:6px;
+    transition:transform .28s;
+  }
+  .info h4 { margin:0; font-size:13px; color:#cfeefe; text-transform:uppercase; letter-spacing:1px; font-weight:600; }
+  .info p { margin:0; font-weight:700; font-size:15px; color:#fff; text-shadow:0 6px 24px rgba(0,0,0,0.5); }
+
+  /* colorful labels for each info box */
+  .info.batt p { color: #fffb; text-shadow:0 0 12px #ff5f7a; }
+  .info.net p  { color: #fff; text-shadow:0 0 12px #00ffd5; }
+  .info.mod p  { color: #fff; text-shadow:0 0 12px #ffd36b; }
+
+  /* footer big centered text */
+  .footer {
+    grid-column: 1 / -1;
+    display:flex;justify-content:center;align-items:center; gap:10px; margin-top:10px;
+  }
+
+  /* big flashy banner text when verifying */
+  .flash {
+    font-family:"Orbitron",sans-serif;
+    font-size:20px;
+    background: linear-gradient(90deg,var(--accent1),var(--accent2),var(--gold));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow: 0 8px 30px rgba(0,0,0,0.65);
+  }
+
+  /* Responsive */
+  @media (max-width:980px){
+    .card{ grid-template-columns: 1fr; }
+    #viewport{ height:360px;}
+  }
+</style>
+</head>
+<body>
+
+<!-- GLSL Shader Backdrop -->
+<div id="shader-wrap" aria-hidden="true"></div>
+
+<!-- Main Card -->
+<div class="card" role="main" aria-live="polite">
+
+  <!-- LEFT: viewport -->
+  <div class="left">
+    <div id="viewport" aria-hidden="false"></div>
+
+    <div class="progress" aria-hidden="true">
+      <i id="progressBar"></i>
+    </div>
+
+    <div class="small">Model: <span id="modelLabel">Detecting…</span></div>
+  </div>
+
+  <!-- RIGHT: infos -->
+  <div class="right">
+    <div class="title">
+      <div style="width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--accent1),var(--accent2));box-shadow:0 0 12px rgba(0,255,213,0.15)"></div>
+      <div class="flash">DEVICE VERIFICATION — TEAM ASTRA</div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info batt" id="batteryBox">
+        <h4>Battery</h4>
+        <p id="batteryVal">Checking…</p>
+      </div>
+
+      <div class="info net" id="networkBox">
+        <h4>Network</h4>
+        <p id="networkVal">Checking…</p>
+      </div>
+
+      <div class="info mod" id="modelBox">
+        <h4>Device</h4>
+        <p id="deviceVal">Detecting UA…</p>
+      </div>
+
+      <div class="info" id="statusBox" aria-live="polite">
+        <h4>Status</h4>
+        <p id="statusVal">Waiting for checks…</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="small">Verification completes automatically — you will be redirected.</div>
+    </div>
+  </div>
+</div>
+
+<!-- libs: three.js, gltf loader, gsap -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.2/dist/gsap.min.js"></script>
+
+<script>
+/* -----------------------
+   CONFIG
+   ----------------------- */
+const REDIRECT_URL = "https://example.com/secret"; // <-- replace with your secret URL
+const MODEL_URL = "https://modelviewer.dev/shared-assets/models/Pixel_4.glb"; // realistic small GLB (example)
+const MAX_TOTAL_WAIT_MS = 7000;      // final forced redirect
+const MODEL_LOAD_TIMEOUT_MS = 2200;  // max model load wait
+const BATTERY_TIMEOUT_MS = 700;      // battery read timeout
+
+/* -----------------------
+   Utilities
+------------------------*/
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([promise, new Promise(res => setTimeout(()=>res(fallback), ms))]);
+}
+
+function setProgress(pct){
+  const bar = document.getElementById('progressBar');
+  bar.style.width = Math.max(2, Math.min(100, pct)) + '%';
+}
+
+/* -----------------------
+   Shader backdrop (GLSL)
+------------------------*/
+(function createShaderBackdrop(){
+  const wrap = document.getElementById('shader-wrap');
+  const canvas = document.createElement('canvas');
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+  wrap.appendChild(canvas);
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if(!gl) return; // fail gracefully
+
+  const vs = `
+    attribute vec2 position;
+    void main(){ gl_Position = vec4(position,0.0,1.0); }
+  `;
+  const fs = `
+    precision mediump float;
+    uniform float u_time;
+    uniform vec2 u_res;
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5*u_res.xy) / u_res.y;
+      float t = u_time*0.6;
+      float d = length(uv);
+      float glow = smoothstep(0.6,0.0, d - 0.2*sin(t*0.5 + d*6.0));
+      vec3 col = mix(vec3(0.01,0.02,0.05), vec3(0.02,0.06,0.12), 1.0-glow);
+      vec3 accent = vec3(0.0,0.85,0.8) * (0.6 + 0.4*sin(t*1.2 + d*8.0));
+      col += accent * (1.0 - smoothstep(0.2, 0.6, d));
+      gl_FragColor = vec4(col,1.0);
+    }
+  `;
+  function compileShader(src, type){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){ console.warn(gl.getShaderInfoLog(s)); } return s; }
+  const vsh = compileShader(vs, gl.VERTEX_SHADER);
+  const fsh = compileShader(fs, gl.FRAGMENT_SHADER);
+  const prog = gl.createProgram(); gl.attachShader(prog, vsh); gl.attachShader(prog, fsh); gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  const pos = gl.getAttribLocation(prog, 'position');
+  const buff = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buff);
+  const verts = new Float32Array([ -1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1 ]);
+  gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(pos); gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+  const u_time = gl.getUniformLocation(prog, 'u_time');
+  const u_res = gl.getUniformLocation(prog, 'u_res');
+  function render(t){
+    canvas.width = innerWidth; canvas.height = innerHeight;
+    gl.viewport(0,0, canvas.width, canvas.height);
+    gl.uniform1f(u_time, t*0.001);
+    gl.uniform2f(u_res, canvas.width, canvas.height);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+})();
+
+/* -----------------------
+   Three.js scene (viewport)
+------------------------*/
+const viewport = document.getElementById('viewport');
+const width = viewport.clientWidth, height = viewport.clientHeight;
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(width, height);
+viewport.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, width/height, 0.1, 1000);
+camera.position.set(0, 0.6, 3.2);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x080820, 0.7); scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 1.1); dir.position.set(5,7,3); scene.add(dir);
+
+// add subtle ground
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(6,6), new THREE.MeshStandardMaterial({ color:0x05050a, roughness:0.8 }));
+ground.rotation.x = -Math.PI/2; ground.position.y = -1.2; scene.add(ground);
+
+let phoneObject = null;
+let fallbackBox = null;
+
+function addFallback(){
+  fallbackBox = new THREE.Mesh(new THREE.BoxGeometry(1.5,3.0,0.12), new THREE.MeshStandardMaterial({ color:0x0b0f16, metalness:0.5, roughness:0.25, emissive:0x001a20, emissiveIntensity:0.2 }));
+  // screen plane
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.3,2.4), new THREE.MeshBasicMaterial({ color:0x000000 }));
+  screen.position.z = 0.065;
+  fallbackBox.add(screen);
+  fallbackBox.position.y = 0;
+  scene.add(fallbackBox);
+  phoneObject = fallbackBox;
+}
+
+/* single render loop using time param */
+function renderLoop(time){
+  if(phoneObject){
+    phoneObject.rotation.y += 0.008;
+    phoneObject.rotation.x = Math.sin(time*0.001*0.3) * 0.04;
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(renderLoop);
+}
+requestAnimationFrame(renderLoop);
+
+/* Load GLB with timeout + progress */
+function loadGLTFWithTimeout(url, timeoutMs = MODEL_LOAD_TIMEOUT_MS){
+  return new Promise((resolve) => {
+    const loader = new THREE.GLTFLoader();
+    let done = false;
+    const ti = setTimeout(()=> {
+      if(done) return;
+      done = true;
+      resolve({ ok:false, reason:'timeout' });
+    }, timeoutMs);
+
+    loader.load(url, gltf => {
+      if(done) return;
+      done = true; clearTimeout(ti);
+      resolve({ ok:true, gltf });
+    }, (xhr) => {
+      if(xhr.total) {
+        const pct = Math.round((xhr.loaded / xhr.total) * 100);
+        setProgress(pct * 0.7); // model load contributes 70% of progress
+      }
+    }, (err) => {
+      if(done) return;
+      done = true; clearTimeout(ti);
+      resolve({ ok:false, reason:err });
+    });
+  });
+}
+
+/* Start: show fallback immediately, try load model */
+addFallback();
+setProgress(10);
+
+(async function attemptModel(){
+  const res = await loadGLTFWithTimeout(MODEL_URL, MODEL_LOAD_TIMEOUT_MS);
+  if(res.ok){
+    // remove fallback
+    if(fallbackBox) scene.remove(fallbackBox);
+    phoneObject = res.gltf.scene;
+    phoneObject.scale.set(1.25,1.25,1.25);
+    phoneObject.position.y = 0;
+    scene.add(phoneObject);
+    setProgress(90);
+  } else {
+    setProgress(40);
+    console.warn('Model load failed', res.reason);
+  }
+})();
+
+/* -----------------------
+   Dynamic screen texture (TEAM ASTRA + contact)
+------------------------*/
+function makeScreenTexture(title, contact){
+  const c = document.createElement('canvas'); c.width=1024; c.height=2048;
+  const cx = c.getContext('2d');
+  // background
+  const g = cx.createLinearGradient(0,0,0,c.height);
+  g.addColorStop(0,'#05060a'); g.addColorStop(1,'#071425');
+  cx.fillStyle = g; cx.fillRect(0,0,c.width,c.height);
+  // header glow
+  cx.fillStyle = 'rgba(0,255,213,0.06)'; cx.fillRect(40,40,c.width-80,280);
+  // title
+  cx.font = "bold 110px Orbitron";
+  cx.fillStyle = '#fff';
+  cx.textAlign='center';
+  cx.fillText(title, c.width/2, 220);
+  // contact
+  cx.font = "bold 64px Inter";
+  cx.fillStyle = '#ffd36b';
+  cx.fillText(contact, c.width/2, 320);
+  // a small fake status bar
+  cx.fillStyle='rgba(255,255,255,0.06)'; cx.fillRect(0,0,c.width,40);
+  // battery icon
+  cx.strokeStyle='rgba(255,255,255,0.5)'; cx.lineWidth=6; cx.strokeRect(c.width-150,10,110,20);
+  return new THREE.CanvasTexture(c);
+}
+
+/* attach screen texture when model or fallback has screen plane */
+function applyScreenTexture(tex){
+  function findScreenMesh(obj){
+    let found = null;
+    obj.traverse(n => {
+      if(found) return;
+      if(n.isMesh){
+        const box = new THREE.Box3().setFromObject(n);
+        const size = new THREE.Vector3(); box.getSize(size);
+        if(size.x > 0.8 && size.y > 1.2 && size.z < 0.2) found = n;
+      }
+    });
+    return found;
+  }
+
+  const target = phoneObject ? findScreenMesh(phoneObject) : null;
+  if(target){
+    // if mesh has uv/material supporting texture, apply map
+    if(Array.isArray(target.material)){
+      target.material.forEach(m => { if(m.map !== undefined) m.map = tex; });
+    } else {
+      // preserve lighting by using MeshStandardMaterial if possible
+      target.material = new THREE.MeshBasicMaterial({ map: tex });
+    }
+  } else {
+    // fallback: create plane and attach in front of phoneObject
+    const screenPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.0,1.9), new THREE.MeshBasicMaterial({ map:tex }));
+    screenPlane.position.z = 0.12;
+    if(phoneObject) phoneObject.add(screenPlane);
+  }
+}
+
+/* wait for either model or fallback then apply */
+function attachScreenWhenReady(title, contact){
+  const t = makeScreenTexture(title, contact);
+  setTimeout(()=> applyScreenTexture(t), 500);
+}
+
+/* -----------------------
+   Info reads (battery/network/device) - with fast fallbacks
+------------------------*/
+const batteryVal = document.getElementById('batteryVal');
+const networkVal = document.getElementById('networkVal');
+const deviceVal  = document.getElementById('deviceVal');
+const statusVal  = document.getElementById('statusVal');
+const modelLabel = document.getElementById('modelLabel');
+
+async function readBattery(){
+  batteryVal.textContent = 'Checking…';
+  if(!navigator.getBattery) {
+    batteryVal.textContent = 'Unsupported';
+    return;
+  }
+  const batt = await withTimeout(navigator.getBattery(), BATTERY_TIMEOUT_MS, null);
+  if(!batt){
+    batteryVal.textContent = 'Unavailable';
+    return;
+  }
+  function update(){
+    try {
+      batteryVal.textContent = `${Math.round(batt.level*100)}% ${batt.charging ? '⚡ Charging' : ''}`;
+    } catch(e) {
+      batteryVal.textContent = 'Unavailable';
+    }
+  }
+  update();
+  batt.addEventListener('levelchange', update);
+  batt.addEventListener('chargingchange', update);
+}
+
+function readNetwork(){
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if(!conn){
+    networkVal.textContent = 'Unknown';
+    return;
+  }
+  function update(){
+    networkVal.textContent = `${conn.effectiveType || conn.type || 'unknown'} ${conn.downlink ? '• ' + Math.round(conn.downlink) + 'Mbps' : ''}`;
+  }
+  update();
+  if(conn.addEventListener) conn.addEventListener('change', update);
+}
+
+function readDevice(){
+  const ua = navigator.userAgent || 'Unknown';
+  deviceVal.textContent = ua;
+  modelLabel.textContent = ua.split(')')[0] || ua;
+}
+
+/* -----------------------
+   Sounds & speech (Web Audio + speechSynthesis)
+------------------------*/
+let availableVoices = [];
+function ensureVoicesLoaded(){
+  try {
+    availableVoices = window.speechSynthesis.getVoices();
+    if(availableVoices.length === 0){
+      // some browsers load asynchronously
+      window.speechSynthesis.onvoiceschanged = () => { availableVoices = window.speechSynthesis.getVoices(); };
+    }
+  } catch(e){}
+}
+ensureVoicesLoaded();
+
+function speak(text, lang='en-US', rate=1.0){
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang; u.rate = rate;
+    if(availableVoices && availableVoices.length){
+      u.voice = availableVoices.find(v => v.lang && v.lang.startsWith('en')) || availableVoices[0];
+    }
+    window.speechSynthesis.speak(u);
+  } catch(e){ console.warn('speech failed', e); }
+}
+
+function playTone(frequency=440, duration=0.18){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = frequency;
+    o.connect(g); g.connect(ctx.destination);
+    g.gain.value = 0.0001;
+    o.start();
+    g.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 0.01);
+    g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + duration);
+    setTimeout(()=>{ o.stop(); ctx.close(); }, (duration+0.05)*1000);
+  } catch(e){}
+}
+
+/* -----------------------
+   Verification flow
+------------------------*/
+let checksDone = 0;
+function markCheckDone(name){
+  checksDone++;
+  // make progress reach 100 when all done
+  const pct = Math.min(100, 10 + checksDone * 30);
+  setProgress(pct);
+  if(checksDone >= 3) {
+    statusVal.textContent = 'All checks passed. Redirecting…';
+    playTone(880, 0.12);
+    speak('Verification complete. Redirecting now.', 'en-US', 1.0);
+    gsap.fromTo('.flash', { y:-6, opacity:0.6 }, { y:0, opacity:1, duration:0.7, ease:'power2.out' });
+    setTimeout(()=> { window.location.href = REDIRECT_URL; }, 555000);
+  }
+}
+
+/* begin checks */
+(async function startChecks(){
+  attachScreenWhenReady('TEAM ASTRA', '+92-283545270');
+
+  // battery check
+  await readBattery();
+  markCheckDone('battery');
+
+  // network check
+  readNetwork();
+  markCheckDone('network');
+
+  // device read
+  readDevice();
+  markCheckDone('device');
+
+  // update final progress if not already 100
+  setProgress(100);
+})();
+
+/* final safety redirect in case checks hang */
+const safetyTimer = setTimeout(()=> {
+  // if not already navigated, do final redirect
+  try {
+    statusVal.textContent = 'Finalizing — redirecting…';
+    window.location.href = REDIRECT_URL;
+  } catch(e){}
+}, MAX_TOTAL_WAIT_MS);
+
+</script>
+</body>
+</html>
